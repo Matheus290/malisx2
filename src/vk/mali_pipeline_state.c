@@ -680,7 +680,7 @@ pack_zsd(const struct mali_gfx_pack_input *in, struct mali_gfx_baked *out)
          cfg.depth_clamp_mode = MALI_DEPTH_CLAMP_MODE_BOUNDS;
 
       if (in->fs) {
-#if PAN_ARCH >= 10
+#if PAN_ARCH >= 11
          cfg.separated_dependency_tracking = true;
 #endif
          cfg.depth_source = in->fs->info.fs.writes_depth ?
@@ -907,7 +907,7 @@ pack_flags(const struct mali_gfx_pack_input *in, struct mali_gfx_baked *out)
             !(out->rt_read & out->rt_written) &&
             !(dyn->rasterization_order_access & VK_IMAGE_ASPECT_COLOR_BIT);
          cfg.scissor_to_bounding_box = true;
-#if PAN_ARCH >= 10
+#if PAN_ARCH >= 11
          cfg.conservative_rast_mode =
             rs->conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_OVERESTIMATE_EXT ?
                MALI_CONSERVATIVE_RAST_MODE_OVER_ESTIMATE :
@@ -932,10 +932,12 @@ pack_flags(const struct mali_gfx_pack_input *in, struct mali_gfx_baked *out)
    pan_pack(&dcd2, DCD_FLAGS_2, cfg) {
       cfg.read_mask = out->rt_read;
       cfg.write_mask = out->rt_written;
+#if PAN_ARCH >= 11
       if (fs) {
          cfg.no_shader_depth_read = !attachment_read(fs, dyn->ial.depth_att);
          cfg.no_shader_stencil_read = !attachment_read(fs, dyn->ial.stencil_att);
       }
+#endif
    }
    out->dcd2 = dcd2.opaque[0];
 #else

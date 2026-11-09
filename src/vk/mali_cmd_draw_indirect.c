@@ -81,6 +81,19 @@ static void
 emit_mul_add(struct cs_builder *b, struct cs_index acc, struct cs_index fi, uint32_t stride,
              struct cs_index bit, struct cs_index tmp)
 {
+#if PAN_ARCH == 10
+   /* No AND on v10: take fi apart from the top bit down by subtraction
+    * (signed compares: fi below 2^31, as instance indices are). */
+   cs_add_imm32(b, bit, fi, 0);
+   for (int i = 30; i >= 0; i--) {
+      cs_add_imm32(b, tmp, bit, -(int32_t)(1u << i));
+      cs_if(b, MALI_CS_CONDITION_GEQUAL, tmp) {
+         cs_add_imm32(b, bit, tmp, 0);
+         if ((uint32_t)(stride << i))
+            cs_add_imm32(b, acc, acc, (int32_t)(stride << i));
+      }
+   }
+#else
    const unsigned bits = 32 - ffs(stride) + 1;   /* stride << i is 0 from here */
    for (unsigned i = 0; i < bits; i++) {
       cs_move32_to(b, bit, 1u << i);
@@ -88,6 +101,7 @@ emit_mul_add(struct cs_builder *b, struct cs_index acc, struct cs_index fi, uint
       cs_if(b, MALI_CS_CONDITION_NEQUAL, tmp)
          cs_add_imm32(b, acc, acc, (int32_t)(stride << i));
    }
+#endif
    /* Close the last if here: the caller's own if ends right after. */
    cs_flush_pending_if(b);
 }

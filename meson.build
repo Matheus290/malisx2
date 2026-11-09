@@ -31,7 +31,7 @@ project(
 # The GPU architecture of the command-stream (CSF) back half and of the
 # code compiled once (Mesa numbering): the G615 in the RG 477V reports
 # arch 11.
-pan_arch = 11
+pan_arch = get_option('csf_arch').to_int()
 
 # Every arch we generate genxml packers and a pixel-format library for, and
 # build the per-arch vk/ files for (src/meson.build): 7 for the G52's and

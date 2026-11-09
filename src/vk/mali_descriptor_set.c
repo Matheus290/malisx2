@@ -134,7 +134,12 @@ MALI_PER_ARCH(CreateBufferView)(VkDevice _device, const VkBufferViewCreateInfo *
       cfg.buffer_type = MALI_BUFFER_TYPE_STRUCTURE;
 #if PAN_ARCH >= 10
       cfg.size = size & BITFIELD_MASK(32);
+#if PAN_ARCH >= 11
       cfg.size_hi = size >> 32;
+#else
+      if (size >> 32)
+         cfg.size = (UINT32_MAX / stride) * stride;   /* v10: 32 bits of size */
+#endif
 #else
       /* 32 bits of size on v9: whole texels below 4 GiB. */
       cfg.size = MIN2(size, (UINT32_MAX / stride) * (uint64_t)stride);
@@ -296,8 +301,12 @@ pack_buffer(uint64_t addr, uint64_t range, bool ssbo, void *out)
    pan_cast_and_pack(out, BUFFER, cfg) {
       cfg.address = addr;
 #if PAN_ARCH >= 10
+#if PAN_ARCH >= 11
       cfg.size = size & BITFIELD_MASK(32);
       cfg.size_hi = size >> 32;
+#else
+      cfg.size = MIN2(size, UINT32_MAX & ~(uint64_t)(ssbo ? 3 : 15));
+#endif
 #else
       cfg.size = MIN2(size, UINT32_MAX & ~(uint64_t)(ssbo ? 3 : 15));
 #endif

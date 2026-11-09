@@ -387,13 +387,14 @@ mali_csf_device_init(struct mali_device *dev)
       sb_count = (dev->kbase->glb.streams[0].features >> 8) & 0xff;
    if (sb_count <= MALI_SB_ITER_START)
       sb_count = 8;
-   sb_count = MIN2(sb_count, 16);
+   sb_count = MIN2(sb_count, CS_MAX_SB_COUNT);
    csf->sb.count = sb_count;
    csf->sb.all_mask = (uint16_t)BITFIELD_MASK(sb_count);
    csf->sb.iter_count = sb_count - MALI_SB_ITER_START;
    csf->sb.all_iters_mask = (uint16_t)BITFIELD_RANGE(MALI_SB_ITER_START, csf->sb.iter_count);
 
-   csf->shared_sb = dev->kbase->props.gpu_features & 0x8;
+   /* Shared scoreboard entries (SHARED_SB_INC/DEC) are v11 and later. */
+   csf->shared_sb = PAN_ARCH >= 11 && (dev->kbase->props.gpu_features & 0x8);
 
    dev->csf = csf;
    dev->fe = csf;
@@ -610,12 +611,17 @@ queue_initial_words(struct mali_csf_queue *q, unsigned sq, struct ring_words *w)
                 q->sync_mem.gpu_va + MALI_QUEUE_CTX_OFFSET(sq));
 
    const uint32_t iter0 = MALI_SB_ITER_START;
+#if PAN_ARCH == 10
+   (void)csf;
+   cs_set_scoreboard_entry(b, iter0, MALI_SB_LS);
+#else
    cs_set_state_imm32(b, MALI_CS_SET_STATE_TYPE_SB_SEL_ENDPOINT, iter0);
    cs_set_state_imm32(b, MALI_CS_SET_STATE_TYPE_SB_MASK_WAIT, MALI_SB_MASK(iter0));
    cs_set_state_imm32(b, MALI_CS_SET_STATE_TYPE_SB_SEL_OTHER, MALI_SB_LS);
    cs_set_state_imm32(b, MALI_CS_SET_STATE_TYPE_SB_SEL_DEFERRED, MALI_SB_DEFERRED_SYNC);
    cs_set_state_imm32(b, MALI_CS_SET_STATE_TYPE_SB_MASK_STREAM,
                       csf->sb.all_iters_mask & ~MALI_SB_MASK(iter0));
+#endif
 
    for (unsigned j = 0; j < MALI_SUBQUEUE_COUNT; j++)
       cs_move64_to(b, mali_cs_progress_seqno_reg(b, j), 0);

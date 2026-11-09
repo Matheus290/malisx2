@@ -73,6 +73,10 @@ enum mali_sb {
 static inline void
 mali_cs_shared_sb_inc(struct cs_builder *b, unsigned entry, struct cs_async_op async)
 {
+#if PAN_ARCH < 11
+   (void)b; (void)entry; (void)async;
+   UNREACHABLE("no shared scoreboard entries before v11");
+#else
    cs_emit(b, SHARED_SB_INC, I) {
       I.shared_entry = entry;
       if (async.indirect)
@@ -80,14 +84,20 @@ mali_cs_shared_sb_inc(struct cs_builder *b, unsigned entry, struct cs_async_op a
       else
          I.sb_mask = async.wait_mask;
    }
+#endif
 }
 
 static inline void
 mali_cs_shared_sb_dec(struct cs_builder *b, unsigned entry)
 {
+#if PAN_ARCH < 11
+   (void)b; (void)entry;
+   UNREACHABLE("no shared scoreboard entries before v11");
+#else
    cs_emit(b, SHARED_SB_DEC, I) {
       I.shared_entry = entry;
    }
+#endif
 }
 
 /*

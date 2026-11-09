@@ -94,6 +94,14 @@ struct mali_cmd_cs {
    bool lazy_pending;   /* any of lazy[] or lazy_frag */
    bool lazy_frag;
    struct mali_cache_flush lazy_frag_flush;
+
+   /* v10 only: the iterator scoreboard entry the stream's endpoint tasks
+    * signal. v10 has no NEXT_SB_ENTRY or indirect defer, so the rotation
+    * is tracked here at record time; every stream starts on
+    * MALI_SB_ITER_START (selected with its first recorded work) because
+    * every stream ends waiting for all its entries (finish_stream). */
+   uint8_t iter_sb;
+   bool iter_sb_set;
 };
 
 struct mali_cmd_buffer {
@@ -189,8 +197,32 @@ mali_cmd_cs(struct mali_cmd_buffer *cmd, enum mali_subqueue sq)
       cmd->compute_work = true;
    }
    cmd->cs[sq].idle = false;
+#if defined(PAN_ARCH) && PAN_ARCH == 10
+   if (!cmd->cs[sq].iter_sb_set) {
+      cmd->cs[sq].iter_sb_set = true;
+      cmd->cs[sq].iter_sb = MALI_SB_ITER_START;
+      cs_set_scoreboard_entry(&cmd->cs[sq].b, MALI_SB_ITER_START, MALI_SB_LS);
+   }
+#endif
    return &cmd->cs[sq].b;
 }
+
+#if defined(PAN_ARCH) && PAN_ARCH == 10
+/* v10 counterpart of v11's NEXT_SB_ENTRY + SB_MASK_WAIT/SB_MASK_STREAM
+ * (panvk's v10 cs_iter_sb_update, with the rotation known at record time):
+ * wait for the next iterator entry to be free and make it the endpoint
+ * entry. Returns the entry that was current before (mali_cmd_buffer.c). */
+unsigned mali_cmd_next_iter_sb(struct mali_cmd_buffer *cmd, enum mali_subqueue sq);
+
+/* v10 counterpart of cs_defer_indirect(): wait for the stream's current
+ * iterator entry, signal `signal`. */
+static inline struct cs_async_op
+mali_cmd_defer_iter(const struct mali_cmd_buffer *cmd, enum mali_subqueue sq,
+                    unsigned signal)
+{
+   return cs_defer(MALI_SB_MASK(cmd->cs[sq].iter_sb), signal);
+}
+#endif
 
 /* The recorded stream of subqueue sq: its first chunk and that chunk's size
  * in bytes. False when the stream is empty. */

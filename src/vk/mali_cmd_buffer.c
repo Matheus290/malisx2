@@ -198,6 +198,8 @@ init_streams(struct mali_cmd_buffer *cmd)
       cmd->cs[i].flushed = (struct mali_cache_flush){0};
       memset(cmd->cs[i].carried, 0, sizeof(cmd->cs[i].carried));
       memset(cmd->cs[i].waited, 0, sizeof(cmd->cs[i].waited));
+      cmd->cs[i].iter_sb = MALI_SB_ITER_START;
+      cmd->cs[i].iter_sb_set = false;
       memset(cmd->cs[i].lazy, 0, sizeof(cmd->cs[i].lazy));
       cmd->cs[i].lazy_pending = false;
       cmd->cs[i].lazy_frag = false;
@@ -380,6 +382,24 @@ finish_stream(struct mali_cmd_buffer *cmd, unsigned sq)
                    cs_defer(0, MALI_SB_IMM_FLUSH));
    cs_wait_slot(b, MALI_SB_IMM_FLUSH);
 }
+
+#if PAN_ARCH == 10
+unsigned
+mali_cmd_next_iter_sb(struct mali_cmd_buffer *cmd, enum mali_subqueue sq)
+{
+   const struct mali_csf_device *csf = cmd->dev->csf;
+   struct mali_cmd_cs *c = &cmd->cs[sq];
+   struct cs_builder *b = mali_cmd_cs(cmd, sq);
+   const unsigned cur = c->iter_sb;
+   unsigned next = cur + 1;
+   if (next >= MALI_SB_ITER_START + csf->sb.iter_count)
+      next = MALI_SB_ITER_START;
+   cs_wait_slot(b, next);
+   cs_set_scoreboard_entry(b, next, MALI_SB_LS);
+   c->iter_sb = next;
+   return cur;
+}
+#endif
 
 VKAPI_ATTR VkResult VKAPI_CALL
 MALI_PER_ARCH(EndCommandBuffer)(VkCommandBuffer commandBuffer)

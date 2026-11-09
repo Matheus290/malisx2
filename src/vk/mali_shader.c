@@ -1596,7 +1596,7 @@ place_atest_early(nir_shader *nir)
          }
       }
    }
-found:
+found:;
 
    nir_builder b = nir_builder_at(nir_before_instr(&atest->instr));
    nir_src_rewrite(&atest->src[1], nir_imm_float(&b, 0.0f));

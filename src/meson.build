@@ -205,9 +205,9 @@ malisx2_vk_v11 = static_library(
   _vk_per_arch_files,
   mali_entrypoints[0],   # the header only; the tables are malisx2_vk's
   include_directories : _vk_inc,
-  c_args : [pre_args, malisx2_c_args, '-DPAN_ARCH=11', '-DMALI_PAN_ARCH=11'],
-  dependencies : [_vk_per_arch_deps, idep_pan_format_by_arch['11'],
-                  idep_pan_packers_by_arch['11']],
+  c_args : [pre_args, malisx2_c_args, '-DPAN_ARCH=@0@'.format(pan_arch), '-DMALI_PAN_ARCH=@0@'.format(pan_arch)],
+  dependencies : [_vk_per_arch_deps, idep_pan_format_by_arch['@0@'.format(pan_arch)],
+                  idep_pan_packers_by_arch['@0@'.format(pan_arch)]],
   gnu_symbol_visibility : 'hidden',
 )
 
@@ -289,7 +289,7 @@ endforeach
 # compiler. The waist behaviour is added by the user of the dependency.
 idep_mali_vk = declare_dependency(
   link_whole : [malisx2_vk, malisx2_vk_v11, malisx2_vk_v9, malisx2_vk_v7],
-  link_with : [malisx2_kbase, libpanfrost_pixel_format_by_arch['11'],
+  link_with : [malisx2_kbase, libpanfrost_pixel_format_by_arch['@0@'.format(pan_arch)],
                libpanfrost_pixel_format_by_arch['9'],
                libpanfrost_pixel_format_by_arch['7']],
   sources : [mali_entrypoints[0]],

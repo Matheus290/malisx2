@@ -85,7 +85,7 @@ mali_wsi_arch_no_afbc_usage(unsigned arch, const char *property_value)
 {
    bool fallback;
    const uint64_t bits = mali_wsi_no_afbc_usage(property_value, &fallback);
-   return fallback && arch == 11 ? 0x0200000000000000ull : bits;
+   return fallback && arch >= 10 ? 0x0200000000000000ull : bits;
 }
 
 #ifndef VK_USE_PLATFORM_ANDROID_KHR

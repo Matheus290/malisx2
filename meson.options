@@ -8,3 +8,12 @@ option(
                 'that returns void aborts the process instead of being ' +
                 'logged and skipped.',
 )
+
+option(
+  'csf_arch',
+  type : 'combo',
+  choices : ['11', '10'],
+  value : '11',
+  description : 'GPU architecture of the command-stream (CSF) back half: ' +
+                '11 for the Mali-G615/G715, 10 for the Mali-G610/G710.',
+)

@@ -206,6 +206,14 @@ mali_device_name(const struct mali_kbase_gpu_props *p, char *buf, size_t size)
     */
    const char *model;
    switch (p->product_id & 0xf00f) {
+   /* Arch 10 (csf_arch=10 builds): the Mali-G610 (RK3588) and G710,
+    * product IDs as Mesa's model table has them. */
+   case 0xa007:
+      model = "G610";
+      break;
+   case 0xa002:
+      model = "G710";
+      break;
    case 0xb003:
       model = "G615";
       break;
@@ -484,19 +492,19 @@ static const struct vk_device_extension_table mali_device_extensions = {
 static bool
 storage8_for_arch(uint32_t arch)      /* VK_KHR_8bit_storage */
 {
-   return arch == 7 || arch == 9 || arch == 11;
+   return arch == 7 || arch == 9 || arch == MALI_PAN_ARCH;
 }
 
 static bool
 storage16_for_arch(uint32_t arch)     /* VK_KHR_16bit_storage */
 {
-   return arch == 7 || arch == 9 || arch == 11;
+   return arch == 7 || arch == 9 || arch == MALI_PAN_ARCH;
 }
 
 static bool
 int8_for_arch(uint32_t arch)          /* shaderInt8 of VK_KHR_shader_float16_int8 */
 {
-   return arch == 7 || arch == 9 || arch == 11;
+   return arch == 7 || arch == 9 || arch == MALI_PAN_ARCH;
 }
 
 /*
@@ -511,7 +519,7 @@ int8_for_arch(uint32_t arch)          /* shaderInt8 of VK_KHR_shader_float16_int
 static bool
 draw_indirect_for_arch(uint32_t arch)
 {
-   return arch == 7 || arch == 9 || arch == 11;
+   return arch == 7 || arch == 9 || arch == MALI_PAN_ARCH;
 }
 
 /*
@@ -527,7 +535,7 @@ draw_indirect_for_arch(uint32_t arch)
 static bool
 bda_for_arch(uint32_t arch)
 {
-   return arch == 7 || arch == 9 || arch == 11;
+   return arch == 7 || arch == 9 || arch == MALI_PAN_ARCH;
 }
 
 /*
@@ -539,7 +547,7 @@ bda_for_arch(uint32_t arch)
 static bool
 ubo_std_layout_for_arch(uint32_t arch)
 {
-   return arch == 7 || arch == 9 || arch == 11;
+   return arch == 7 || arch == 9 || arch == MALI_PAN_ARCH;
 }
 
 /* maxDrawIndirectCount. v11: the stream compares the count as a signed
@@ -550,7 +558,7 @@ max_draw_indirect_count_for_arch(uint32_t arch)
 {
    if (!draw_indirect_for_arch(arch))
       return 1;
-   return arch == 11 ? INT32_MAX : UINT16_MAX;
+   return arch == MALI_PAN_ARCH ? INT32_MAX : UINT16_MAX;
 }
 
 static struct vk_device_extension_table
@@ -701,7 +709,7 @@ get_features(struct vk_features *f, uint32_t arch)
        * discards or writes memory, depth or stencil, clipped fragments
        * still write depth and stencil. Cull distances are not
        * supported. */
-      .shaderClipDistance = arch == 7 || arch == 11,
+      .shaderClipDistance = arch == 7 || arch == MALI_PAN_ARCH,
       .fillModeNonSolid = false,
       .depthBounds = false,
       .wideLines = false,
@@ -1164,7 +1172,7 @@ get_properties(const struct mali_physical_device *pdev, const char *name,
     * 4096 16-byte entries (genxml v7.xml). Warps are 8 lanes
     * (pan_subgroup_size).
     */
-   if (p->arch_major == 11) {
+   if (p->arch_major == MALI_PAN_ARCH) {
       props->maxClipDistances = MALI_V11_MAX_CLIP_DISTANCES;
       props->maxCombinedClipAndCullDistances = MALI_V11_MAX_CLIP_DISTANCES;
    }

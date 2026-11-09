@@ -33,7 +33,7 @@
 #include "mali_query.h"
 #include "mali_queue.h"
 
-#if PAN_ARCH != 11
+#if PAN_ARCH < 10
 #error "mali_cmd_query.c is written for arch v11"
 #endif
 

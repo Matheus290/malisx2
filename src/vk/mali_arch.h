@@ -21,7 +21,7 @@
 #define MALI_PER_ARCH(name) mali_v7_##name
 #elif PAN_ARCH == 9
 #define MALI_PER_ARCH(name) mali_v9_##name
-#elif PAN_ARCH == 11
+#elif PAN_ARCH == 10 || PAN_ARCH == 11 /* the CSF half: one arch per build (csf_arch) */
 #define MALI_PER_ARCH(name) mali_v11_##name
 #else
 #error "no per-arch naming for this PAN_ARCH"

@@ -44,7 +44,7 @@
 #include "mali_image.h"
 #include "mali_queue.h"
 
-#if PAN_ARCH != 11
+#if PAN_ARCH < 10
 #error "mali_cmd_render.c is written for arch v11"
 #endif
 
@@ -88,6 +88,10 @@ MALI_PER_ARCH(cmd_render_begin)(struct mali_cmd_buffer *cmd, const struct mali_r
 static void
 next_iter_sb(struct mali_cmd_buffer *cmd, struct cs_builder *b)
 {
+#if PAN_ARCH == 10
+   (void)b;
+   mali_cmd_next_iter_sb(cmd, MALI_SUBQUEUE_VERTEX_TILER);
+#else
    const struct mali_csf_device *csf = cmd->dev->csf;
    struct cs_index next_sb = mali_cs_scratch_reg32(b, 0);
    struct cs_index sb_mask = mali_cs_scratch_reg32(b, 1);
@@ -100,6 +104,7 @@ next_iter_sb(struct mali_cmd_buffer *cmd, struct cs_builder *b)
    cs_move32_to(b, sb_mask, csf->sb.all_iters_mask);
    cs_bit_clear32(b, sb_mask, sb_mask, next_sb);
    cs_set_state(b, MALI_CS_SET_STATE_TYPE_SB_MASK_STREAM, sb_mask);
+#endif
 }
 
 /*
@@ -285,6 +290,11 @@ emit_crc_updates(struct mali_cmd_buffer *cmd, const struct mali_render_state *r,
    if (r->crc_rt < 0)
       return;
 
+#if PAN_ARCH == 10
+   /* No CRC target on v10 (mali_fb.c select_crc_rt): the seed patch needs
+    * the v11 stream's AND/OR. */
+   UNREACHABLE("CRC target on v10");
+#else
    struct cs_builder *b = mali_cmd_cs(cmd, MALI_SUBQUEUE_FRAGMENT);
    struct cs_index addr = mali_cs_scratch_reg64(b, CRC_SCRATCH);
    struct cs_index seed = mali_cs_scratch_reg32(b, CRC_SCRATCH + 2);
@@ -303,6 +313,7 @@ emit_crc_updates(struct mali_cmd_buffer *cmd, const struct mali_render_state *r,
    cs_move64_to(b, addr, fbd + pan_size(FRAMEBUFFER) + 2 * 4);
    cs_store32(b, lo, addr, 0);
    /* The caller waits for the store before the fragment job. */
+#endif
 }
 
 /* ---------------------------------------------------------------------- */
@@ -328,9 +339,15 @@ flush_tiling(struct mali_cmd_buffer *cmd)
       cmd->gfx.render.ubo_stores = false;
    }
    cs_finish_tiling(b);
+#if PAN_ARCH == 10
+   const struct cs_async_op deferred =
+      mali_cmd_defer_iter(cmd, MALI_SUBQUEUE_VERTEX_TILER, MALI_SB_DEFERRED_SYNC);
+#else
+   const struct cs_async_op deferred = cs_defer_indirect();
+#endif
    if (cmd->dev->csf->shared_sb) {
-      cs_vt_end(b, cs_defer_indirect());
-      mali_cs_shared_sb_inc(b, MALI_SHARED_SB_VT_TO_FRAG, cs_defer_indirect());
+      cs_vt_end(b, deferred);
+      mali_cs_shared_sb_inc(b, MALI_SHARED_SB_VT_TO_FRAG, deferred);
       return;
    }
 
@@ -339,8 +356,8 @@ flush_tiling(struct mali_cmd_buffer *cmd)
    cs_move64_to(b, addr, mali_queue_syncobj_va(cmd->dev->csf->queue,
                                                 MALI_SUBQUEUE_VERTEX_TILER));
    cs_move64_to(b, one, 1);
-   cs_vt_end(b, cs_defer_indirect());
-   cs_sync64_add(b, true, MALI_CS_SYNC_SCOPE_CSG, one, addr, cs_defer_indirect());
+   cs_vt_end(b, deferred);
+   cs_sync64_add(b, true, MALI_CS_SYNC_SCOPE_CSG, one, addr, deferred);
    cmd->cs[MALI_SUBQUEUE_VERTEX_TILER].relative_sync_point++;
 }
 
@@ -405,6 +422,32 @@ issue_fragment_jobs(struct mali_cmd_buffer *cmd, struct mali_render_state *r,
     * order: wait on the current iterator entry (the RUN_FRAGMENTs and the
     * previous pass's FINISH_FRAGMENT), signal the next (panvk). Exactly one
     * fragment-completed increment per tiled pass, on the last context. */
+#if PAN_ARCH == 10
+   struct cs_index tiler = mali_cs_scratch_reg64(b, 2);
+   struct cs_index completed = mali_cs_scratch_reg_tuple(b, 4, 4);
+   struct cs_index top = mali_cs_scratch_reg64(b, 4);
+   struct cs_index bottom = mali_cs_scratch_reg64(b, 6);
+
+   /* v10: the rotation is known at record time; FINISH_FRAGMENT waits for
+    * the entry the RUN_FRAGMENTs signalled and signals the next one, which
+    * the following fragment jobs then signal too. */
+   const unsigned cur_sb = cmd->cs[MALI_SUBQUEUE_FRAGMENT].iter_sb;
+   unsigned next_sb = cur_sb + 1;
+   if (next_sb >= MALI_SB_ITER_START + csf->sb.iter_count)
+      next_sb = MALI_SB_ITER_START;
+   cs_wait_slot(b, next_sb);
+   if (r->td_count) {
+      cs_move64_to(b, tiler, r->tiler);
+      for (uint32_t i = 0; i < r->td_count; i++) {
+         cs_load_to(b, completed, tiler, BITFIELD_MASK(4),
+                    i * pan_size(TILER_CONTEXT) + 10 * 4);
+         cs_finish_fragment(b, i == r->td_count - 1, top, bottom,
+                            cs_defer(MALI_SB_MASK(cur_sb), next_sb));
+      }
+   }
+   cs_set_scoreboard_entry(b, next_sb, MALI_SB_LS);
+   cmd->cs[MALI_SUBQUEUE_FRAGMENT].iter_sb = next_sb;
+#else
    struct cs_index next_sb = mali_cs_scratch_reg32(b, 0);
    struct cs_index sb_mask = mali_cs_scratch_reg32(b, 1);
    struct cs_index tiler = mali_cs_scratch_reg64(b, 2);
@@ -436,6 +479,7 @@ issue_fragment_jobs(struct mali_cmd_buffer *cmd, struct mali_render_state *r,
    cs_move32_to(b, sb_mask, csf->sb.all_iters_mask);
    cs_bit_clear32(b, sb_mask, sb_mask, next_sb);
    cs_set_state(b, MALI_CS_SET_STATE_TYPE_SB_MASK_STREAM, sb_mask);
+#endif
 }
 
 void

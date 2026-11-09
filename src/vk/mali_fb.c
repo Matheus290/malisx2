@@ -431,6 +431,13 @@ select_crc_rt(const struct mali_render_state *r)
 {
    if (mali_crc_options.disable)
       return -1;
+#if PAN_ARCH == 10
+   /* v10 keeps a CRC "valid" word instead of v11's seed, and the seed
+    * patch (mali_cmd_render.c emit_crc_updates) needs v11's AND/OR: no
+    * transaction elimination on v10 for now. */
+   if (PAN_ARCH == 10)
+      return -1;
+#endif
    for (unsigned i = 0; i < r->desc.rt_count; i++) {
       if (target_can_crc(r, &r->desc.rt[i]))
          return i;
@@ -818,7 +825,7 @@ pack_zs_ext(const struct mali_render_state *r, unsigned layer, uint64_t crc_clea
          cfg.zs.base = base;
          cfg.zs.row_stride = row;
          cfg.zs.surface_stride = (uint32_t)surf;
-#if PAN_ARCH >= 10
+#if PAN_ARCH >= 11
          cfg.zs.surface_stride_hi = (uint32_t)(surf >> 32);
 #else
          assert(surf <= UINT32_MAX);
@@ -853,7 +860,7 @@ pack_zs_ext(const struct mali_render_state *r, unsigned layer, uint64_t crc_clea
          cfg.s.base = base;
          cfg.s.row_stride = row;
          cfg.s.surface_stride = (uint32_t)surf;
-#if PAN_ARCH >= 10
+#if PAN_ARCH >= 11
          cfg.s.surface_stride_hi = (uint32_t)(surf >> 32);
 #else
          assert(surf <= UINT32_MAX);
@@ -963,7 +970,7 @@ pack_rt(const struct mali_render_state *r, unsigned i, unsigned layer, void *out
       cfg.writeback_buffer.base = base;
       cfg.writeback_buffer.row_stride = row;
       cfg.writeback_buffer.surface_stride = (uint32_t)surf;
-#if PAN_ARCH >= 10
+#if PAN_ARCH >= 11
       cfg.writeback_buffer.surface_stride_hi = (uint32_t)(surf >> 32);
 #else
       assert(surf <= UINT32_MAX);

@@ -21,7 +21,7 @@
 
 #include "mali_cmd_state.h"
 
-#if PAN_ARCH != 11
+#if PAN_ARCH < 10
 #error "mali_cmd_draw.h is written for arch v11"
 #endif
 
@@ -347,7 +347,9 @@ prepare_draw(struct mali_cmd_buffer *cmd, const struct mali_draw_info *di, struc
          batch_move32(e, IDVS(DCD2), bd->dcd2);
          lines = bd->lines;
       }
+#if PAN_ARCH >= 11
       batch_move32(e, IDVS(TILER_FLAGS2), 0);
+#endif
       batch_move32(e, IDVS(VARY_SIZE), bd->vary_size);
       /* Point size 1.0 unless the shader writes it; line width. */
       batch_move32(e, IDVS(PRIMITIVE_SIZE), fui(lines ? dyn->rs.line.width : 1.0f));

@@ -372,8 +372,12 @@ emit_plane(const struct view_src *src, unsigned level, unsigned layer, void *out
          cfg.header_slice_size = s->afbc_header_size;
          cfg.header_slice_stride = 0;
 #if PAN_ARCH >= 10
+#if PAN_ARCH >= 11
          cfg.size_hi = size >> 32;
          cfg.header_slice_stride_hi = 0;
+#else
+         assert(!(size >> 32));
+#endif
          cfg.width = width;
          cfg.height = height;
 #endif
@@ -395,8 +399,12 @@ emit_plane(const struct view_src *src, unsigned level, unsigned layer, void *out
          cfg.row_stride = s->row_stride;
          cfg.slice_stride = slice_stride & BITFIELD_MASK(32);
 #if PAN_ARCH >= 10
+#if PAN_ARCH >= 11
          cfg.size_hi = size >> 32;
          cfg.slice_stride_hi = slice_stride >> 32;
+#else
+         assert(!(size >> 32) && !(slice_stride >> 32));
+#endif
          cfg.width = width;
          cfg.height = height;
 #endif
@@ -412,8 +420,12 @@ emit_plane(const struct view_src *src, unsigned level, unsigned layer, void *out
       cfg.row_stride = s->row_stride;
       cfg.slice_stride = slice_stride & BITFIELD_MASK(32);
 #if PAN_ARCH >= 10
+#if PAN_ARCH >= 11
       cfg.size_hi = size >> 32;
       cfg.slice_stride_hi = slice_stride >> 32;
+#else
+      assert(!(size >> 32) && !(slice_stride >> 32));
+#endif
       cfg.width = width;
       cfg.height = height;
 #endif

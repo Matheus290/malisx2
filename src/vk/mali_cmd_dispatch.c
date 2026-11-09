@@ -59,6 +59,10 @@
 static void
 next_iter_sb(struct mali_cmd_buffer *cmd, struct cs_builder *b)
 {
+#if PAN_ARCH == 10
+   (void)b;
+   mali_cmd_next_iter_sb(cmd, MALI_SUBQUEUE_COMPUTE);
+#else
    const struct mali_csf_device *csf = cmd->dev->csf;
    struct cs_index next_sb = mali_cs_scratch_reg32(b, 0);
    struct cs_index sb_mask = mali_cs_scratch_reg32(b, 1);
@@ -71,6 +75,7 @@ next_iter_sb(struct mali_cmd_buffer *cmd, struct cs_builder *b)
    cs_move32_to(b, sb_mask, csf->sb.all_iters_mask);
    cs_bit_clear32(b, sb_mask, sb_mask, next_sb);
    cs_set_state(b, MALI_CS_SET_STATE_TYPE_SB_MASK_STREAM, sb_mask);
+#endif
 }
 
 /* indirect: GPU address of a VkDispatchIndirectCommand, 0 for a direct

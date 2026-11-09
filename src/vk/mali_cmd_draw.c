@@ -38,7 +38,7 @@
 #include "mali_arch.h"
 #include "mali_queue.h"
 
-#if PAN_ARCH != 11
+#if PAN_ARCH < 10
 #error "mali_cmd_draw.c is written for arch v11"
 #endif
 
@@ -46,7 +46,8 @@
 
 /* Bit 55 of RUN_IDVS; the on-device smoke test clears it once to check
  * what it does. */
-bool mali_idvs_bit55 = true;
+/* v11 only (Tiler Flags2 Enable): v10 has no TILER_FLAGS2 register. */
+bool mali_idvs_bit55 = PAN_ARCH >= 11;
 
 static void
 draw(struct mali_cmd_buffer *cmd, const struct mali_draw_info *di)
@@ -184,7 +185,9 @@ MALI_PER_ARCH(cmd_run_fullscreen)(struct mali_cmd_buffer *cmd, uint64_t dcd, con
       cfg.scissor_maximum_y = maxy;
    }
    cs_move64_to(b, cs_reg64(b, IDVS(SCISSOR_BOX)), sc.opaque[0] | (uint64_t)sc.opaque[1] << 32);
+#if PAN_ARCH >= 11
    cs_move32_to(b, cs_reg32(b, IDVS(TILER_FLAGS2)), 0);
+#endif
 
    struct cs_index dcd_reg = mali_cs_scratch_reg64(b, 0);
    cs_move64_to(b, dcd_reg, dcd);
@@ -239,8 +242,10 @@ MALI_PER_ARCH(cmd_fb_barrier)(struct mali_cmd_buffer *cmd)
       cfg.flags_0.occlusion_query = MALI_OCCLUSION_MODE_DISABLED;
       cfg.flags_2.read_mask = 0;
       cfg.flags_2.write_mask = 0;
+#if PAN_ARCH >= 11
       cfg.flags_2.no_shader_depth_read = true;
       cfg.flags_2.no_shader_stencil_read = true;
+#endif
       cfg.depth_stencil = zsd.gpu;
    }
    const VkRect2D all = {{0, 0}, {r->desc.width, r->desc.height}};
