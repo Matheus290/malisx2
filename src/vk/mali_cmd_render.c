@@ -267,8 +267,14 @@ MALI_PER_ARCH(cmd_crc_invalidate)(struct mali_cmd_buffer *cmd, const struct mali
     * registers a pending store reads, and bumps are rare. */
    cs_flush_stores(b);
    cs_move64_to(b, addr, image->crc_header);
+#if PAN_ARCH == 10
+   /* v10: the same word is the valid flag; zero, the next pass that
+    * keeps the image's CRCs rewrites them all before any is read. */
+   cs_move32_to(b, seed, 0);
+#else
    cs_load32_to(b, seed, addr, CRC_SEED_OFFSET);
    cs_add_imm32(b, seed, seed, 1);
+#endif
    cs_store32(b, seed, addr, CRC_SEED_OFFSET);
    cs_flush_stores(b);
 }
@@ -291,9 +297,38 @@ emit_crc_updates(struct mali_cmd_buffer *cmd, const struct mali_render_state *r,
       return;
 
 #if PAN_ARCH == 10
-   /* No CRC target on v10 (mali_fb.c select_crc_rt): the seed patch needs
-    * the v11 stream's AND/OR. */
-   UNREACHABLE("CRC target on v10");
+   /* v10 has no seed (the hardware takes no CRC init from the clear
+    * colour, and the stream has no AND/OR to merge one): panvk v10's
+    * valid word instead. The header word is 1 while the stored CRCs
+    * describe the image, 0 after an invalidation. Not valid, the pass
+    * writes CRCs without reading them and writes every tile
+    * (mali_fb_build's [1] words); after such a pass over the whole image
+    * mark_crc_valid sets the word. */
+   struct cs_builder *b = mali_cmd_cs(cmd, MALI_SUBQUEUE_FRAGMENT);
+   struct cs_index addr = mali_cs_scratch_reg64(b, CRC_SCRATCH);
+   struct cs_index valid = mali_cs_scratch_reg32(b, CRC_SCRATCH + 2);
+   struct cs_index w0 = mali_cs_scratch_reg32(b, CRC_SCRATCH + 3);
+   struct cs_index w12 = mali_cs_scratch_reg32(b, CRC_SCRATCH + 4);
+   struct cs_index rt_w1 = mali_cs_scratch_reg32(b, CRC_SCRATCH + 5);
+   const uint32_t rt_off = pan_size(FRAMEBUFFER) + pan_size(ZS_CRC_EXTENSION) +
+                           r->crc_rt * pan_size(RENDER_TARGET) + 4;
+
+   cs_flush_stores(b);
+   cs_move64_to(b, addr, r->desc.rt[r->crc_rt].image->crc_header);
+   cs_load32_to(b, valid, addr, CRC_SEED_OFFSET);
+   cs_move32_to(b, w0, r->crc_fbd_w0[1]);
+   cs_move32_to(b, w12, r->crc_fbd_w12[1]);
+   cs_move32_to(b, rt_w1, r->crc_rt_w1[1]);
+   cs_if(b, MALI_CS_CONDITION_NEQUAL, valid) {
+      cs_move32_to(b, w0, r->crc_fbd_w0[0]);
+      cs_move32_to(b, w12, r->crc_fbd_w12[0]);
+      cs_move32_to(b, rt_w1, r->crc_rt_w1[0]);
+   }
+   cs_move64_to(b, addr, fbd);
+   cs_store32(b, w0, addr, 0);
+   cs_store32(b, w12, addr, 12 * 4);
+   cs_store32(b, rt_w1, addr, rt_off);
+   /* The caller waits for the stores before the fragment job. */
 #else
    struct cs_builder *b = mali_cmd_cs(cmd, MALI_SUBQUEUE_FRAGMENT);
    struct cs_index addr = mali_cs_scratch_reg64(b, CRC_SCRATCH);
@@ -447,6 +482,23 @@ issue_fragment_jobs(struct mali_cmd_buffer *cmd, struct mali_render_state *r,
    }
    cs_set_scoreboard_entry(b, next_sb, MALI_SB_LS);
    cmd->cs[MALI_SUBQUEUE_FRAGMENT].iter_sb = next_sb;
+
+   /* CRC on v10: a pass over the whole image that ran with the CRCs not
+    * valid wrote all of them; once its fragment job is done (panvk
+    * mark_crc_valid_after_fragment), later passes may read them. The
+    * wait only happens in that pass, once per invalidation. */
+   if (r->crc_rt >= 0 && r->crc_mark_valid) {
+      struct cs_index addr = mali_cs_scratch_reg64(b, CRC_SCRATCH);
+      struct cs_index valid = mali_cs_scratch_reg32(b, CRC_SCRATCH + 2);
+      cs_move64_to(b, addr, r->desc.rt[r->crc_rt].image->crc_header);
+      cs_load32_to(b, valid, addr, CRC_SEED_OFFSET);
+      cs_if(b, MALI_CS_CONDITION_EQUAL, valid) {
+         cs_wait_slot(b, cur_sb);
+         cs_move32_to(b, valid, 1);
+         cs_store32(b, valid, addr, CRC_SEED_OFFSET);
+         cs_flush_stores(b);
+      }
+   }
 #else
    struct cs_index next_sb = mali_cs_scratch_reg32(b, 0);
    struct cs_index sb_mask = mali_cs_scratch_reg32(b, 1);

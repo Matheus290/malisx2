@@ -243,6 +243,14 @@ struct mali_render_state {
     * seed (mali_fb_build). */
    int crc_rt;
    uint32_t crc_clear_lo;
+   /* v10 (no seed): the words the back half stores into the FBD before
+    * the fragment job, [0] while the target's CRCs are valid, [1] while
+    * they are not (mali_fb_build): Framebuffer Parameters words 0 and 12
+    * and word 1 of the CRC target's Render Target. crc_mark_valid: the
+    * pass writes every tile of the target, so after it the CRCs are
+    * valid. */
+   uint32_t crc_fbd_w0[2], crc_fbd_w12[2], crc_rt_w1[2];
+   bool crc_mark_valid;
 
    /* The Tiler Context's and Framebuffer Parameters' First provoking
     * vertex bit (provokingVertexModePerPipeline is false: one mode for

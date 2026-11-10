@@ -431,13 +431,6 @@ select_crc_rt(const struct mali_render_state *r)
 {
    if (mali_crc_options.disable)
       return -1;
-#if PAN_ARCH == 10
-   /* v10 keeps a CRC "valid" word instead of v11's seed, and the seed
-    * patch (mali_cmd_render.c emit_crc_updates) needs v11's AND/OR: no
-    * transaction elimination on v10 for now. */
-   if (PAN_ARCH == 10)
-      return -1;
-#endif
    for (unsigned i = 0; i < r->desc.rt_count; i++) {
       if (target_can_crc(r, &r->desc.rt[i]))
          return i;
@@ -1093,6 +1086,34 @@ MALI_PER_ARCH(fb_build)(struct mali_cmd_buffer *cmd, struct mali_render_state *r
       for (unsigned i = 0; i < r->rt_count; i++)
          pack_rt(r, i, l, next + i * pan_size(RENDER_TARGET));
    }
+
+#if PAN_ARCH == 10
+   /* v10 has no CRC seed (mali_cmd_render.c "CRC"): the back half picks
+    * one of two sets of words by the image's valid word. Valid: the
+    * words as packed, CRC read and write. Not valid: panvk's write-only
+    * initialization, CRC and empty-tile writes without reads, clean-tile
+    * write on the target so that every tile is written and stamped, and
+    * so (pan_fix_frame_shader_mode) preloads on every tile. Single layer:
+    * CRC targets have one. */
+   if (crc) {
+      const uint32_t *w = (const uint32_t *)p.cpu;
+      const uint32_t rt_w1 = pan_size(FRAMEBUFFER) + pan_size(ZS_CRC_EXTENSION) +
+                             r->crc_rt * pan_size(RENDER_TARGET) + 4;
+      const uint32_t mode_mask = BITFIELD_MASK(6);
+      r->crc_fbd_w0[0] = w[0];
+      r->crc_fbd_w0[1] = (w[0] & ~mode_mask) | fix_frame_mode(w[0] & 7, true) |
+                         fix_frame_mode((w[0] >> 3) & 7, true) << 3;
+      r->crc_fbd_w12[0] = w[12];
+      r->crc_fbd_w12[1] = (w[12] & BITFIELD_MASK(28)) | BITFIELD_BIT(29) | BITFIELD_BIT(31);
+      r->crc_rt_w1[0] = *(const uint32_t *)((const uint8_t *)p.cpu + rt_w1);
+      r->crc_rt_w1[1] = r->crc_rt_w1[0] | BITFIELD_BIT(31);
+      /* Every tile of level 0 is in the render area. */
+      const struct mali_image *img = r->desc.rt[r->crc_rt].image;
+      r->crc_mark_valid = layers == 1 && r->minx == 0 && r->miny == 0 &&
+                          r->maxx + 1 >= img->vk.extent.width &&
+                          r->maxy + 1 >= img->vk.extent.height;
+   }
+#endif
 
    struct mali_framebuffer_pointer_packed tag;
    pan_pack(&tag, FRAMEBUFFER_POINTER, cfg) {
