@@ -15,8 +15,12 @@
 #include "mali_shader.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#ifndef VK_USE_PLATFORM_ANDROID_KHR
+#include <link.h>
+#endif
 
 #include "util/log.h"
 #include "util/macros.h"
@@ -561,6 +565,45 @@ max_draw_indirect_count_for_arch(uint32_t arch)
    return arch == MALI_PAN_ARCH ? INT32_MAX : UINT16_MAX;
 }
 
+#ifndef VK_USE_PLATFORM_ANDROID_KHR
+/*
+ * Arm's vulkan-wsi-layer before mid-2025 (commit 4a6f61a; ROCKNIX ships one
+ * of these) requires VK_KHR_sampler_ycbcr_conversion by name on every
+ * device it wraps, whatever API version the application asks for, and fails
+ * vkCreateDevice with VK_ERROR_INITIALIZATION_FAILED when the driver does
+ * not list it. It never creates a conversion: the extension only stands for
+ * VK_IMAGE_CREATE_DISJOINT_BIT, which the layer sets only for a format
+ * whose modifier reports VK_FORMAT_FEATURE_DISJOINT_BIT, and malisx2
+ * reports it for none. Newer layers ask for the name only below Vulkan 1.1.
+ *
+ * So the name is listed while a library of that layer is loaded in the
+ * process (the loader loads implicit layers at vkCreateInstance, before the
+ * physical devices are enumerated). samplerYcbcrConversion stays false and
+ * samplers with a conversion are still refused (mali_sampler.c).
+ * MALISX2_WSI_YCBCR=1 or 0 forces the name on or off.
+ */
+static int
+find_arm_wsi_layer(struct dl_phdr_info *info, size_t size, void *data)
+{
+   static const char layer[] = "libVkLayer_window_system_integration.so";
+   const char *name = info->dlpi_name;
+   if (!name || !name[0])
+      return 0;
+   const char *base = strrchr(name, '/');
+   base = base ? base + 1 : name;
+   return strncmp(base, layer, sizeof(layer) - 1) == 0;
+}
+
+static bool
+arm_wsi_layer_needs_ycbcr_name(void)
+{
+   const char *env = getenv("MALISX2_WSI_YCBCR");
+   if (env && env[0])
+      return env[0] != '0';
+   return dl_iterate_phdr(find_arm_wsi_layer, NULL) != 0;
+}
+#endif
+
 static struct vk_device_extension_table
 device_extensions_for_arch(uint32_t arch)
 {
@@ -575,6 +618,10 @@ device_extensions_for_arch(uint32_t arch)
 
    ext.KHR_buffer_device_address = bda_for_arch(arch);
    ext.KHR_uniform_buffer_standard_layout = ubo_std_layout_for_arch(arch);
+#ifndef VK_USE_PLATFORM_ANDROID_KHR
+   /* For older Arm WSI layers only (arm_wsi_layer_needs_ycbcr_name). */
+   ext.KHR_sampler_ycbcr_conversion = arm_wsi_layer_needs_ycbcr_name();
+#endif
    return ext;
 }
 

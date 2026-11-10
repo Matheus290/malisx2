@@ -68,6 +68,12 @@ imports them into the driver (`VK_EXT_image_drm_format_modifier` with
 `DRM_FORMAT_MOD_LINEAR`, `VK_EXT_external_memory_dma_buf`); none of its code
 is part of this repository or linked into the library.
 
+Layers older than mid-2025 (ROCKNIX's RK3588 image ships one) refuse any
+device that does not list `VK_KHR_sampler_ycbcr_conversion`, although they
+never create a conversion. While such a layer is loaded in the process the
+driver lists the name, with `samplerYcbcrConversion` still unsupported;
+`MALISX2_WSI_YCBCR=1` or `0` forces it on or off.
+
 ## Measurement
 
 `MALISX2_MEASURE=timing` (or `draws`, `csf`, `both`, `shaders`, `cpuprof`;
